@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Upload Bukti Potong Pajak</title>
+
+    <!-- Bootstrap 5 -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+
+    <!-- DataTables Bootstrap 5 -->
+    <link
+      href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css"
+      rel="stylesheet"
+    />
+
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  </head>
+  <body class="bg-light">
+    <div class="container my-5">
+      <div class="card shadow">
+        <div class="card-body">
+          <h3 class="mb-4">
+            Upload Bukti Potong Pajak 2024 Pegawai Puskesmas Trenggalek
+          </h3>
+
+          <!-- Input Pencarian -->
+          <div class="mb-4">
+            <label for="searchName" class="form-label"
+              >Cari Berdasarkan Nama:</label
+            >
+            <input
+              type="text"
+              class="form-control"
+              id="searchName"
+              placeholder="Cari nama pegawai..."
+            />
+          </div>
+
+          <div class="table-responsive">
+            <table id="pegawaiTable" class="table table-bordered table-striped">
+              <thead class="table-success">
+                <tr>
+                  <th>Nama</th>
+                  <th>NIP</th>
+                  <th>Jabatan</th>
+                  <th>Bukti Potong</th>
+                </tr>
+              </thead>
+              <tbody id="table-body">
+                <!-- Data dari Firebase -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- JS Libraries -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+      // Firebase Config
+      const firebaseConfig = {
+        apiKey: "AIzaSyDRIdHfyGbhGThYH6G4giH4kXiFFIB6buw",
+        authDomain: "data-karyawan-8a828.firebaseapp.com",
+        databaseURL: "https://data-karyawan-8a828-default-rtdb.firebaseio.com",
+        projectId: "data-karyawan-8a828",
+        storageBucket: "data-karyawan-8a828.appspot.com",
+        messagingSenderId: "651382600587",
+        appId: "1:651382600587:web:e6df00e7dc61cd1348f58e",
+      };
+      firebase.initializeApp(firebaseConfig);
+      const db = firebase.database();
+
+      const tableBody = document.getElementById("table-body");
+
+      db.ref("pegawai").once("value", (snapshot) => {
+        const data = snapshot.val();
+        for (const id in data) {
+          const pegawai = data[id];
+          const row = document.createElement("tr");
+
+          const nama = pegawai.nama;
+          const fileUploaded = pegawai.buktiPotong || null;
+
+          let cellUpload = "";
+
+          if (fileUploaded) {
+            // Sudah upload, tampilkan nama file
+            const fileName = fileUploaded.split("/").pop();
+            cellUpload = `<span class="text-success">${fileName}</span>`;
+          } else {
+            // Belum upload
+            cellUpload = `
+            <div class="input-group">
+              <input type="file" accept="application/pdf" class="form-control file-input" data-id="${id}" data-nama="${nama}">
+              <button class="btn btn-primary btn-upload" type="button">Upload</button>
+            </div>
+          `;
+          }
+
+          row.innerHTML = `
+          <td>${nama}</td>
+          <td>${pegawai.nip}</td>
+          <td>${pegawai.jabatan}</td>
+          <td>${cellUpload}</td>
+        `;
+          tableBody.appendChild(row);
+        }
+
+        // Inisialisasi DataTable
+        const table = $("#pegawaiTable").DataTable({
+          paging: false,
+          searching: true, // Mengaktifkan pencarian pada DataTable
+        });
+
+        // Pencarian berdasarkan nama
+        document
+          .getElementById("searchName")
+          .addEventListener("input", function () {
+            const searchTerm = this.value;
+            table.columns(0).search(searchTerm).draw(); // Pencarian pada kolom Nama (kolom pertama)
+          });
+
+        // Upload handler
+        document.querySelectorAll(".btn-upload").forEach((button) => {
+          button.addEventListener("click", function () {
+            const inputGroup = this.closest(".input-group");
+            const fileInput = inputGroup.querySelector(".file-input");
+            const file = fileInput.files[0];
+            const nama = fileInput.dataset.nama;
+            const id = fileInput.dataset.id;
+
+            if (!file) {
+              Swal.fire(
+                "Oops!",
+                "Silakan pilih file PDF terlebih dahulu.",
+                "warning"
+              );
+              return;
+            }
+
+            if (file.type !== "application/pdf") {
+              Swal.fire(
+                "Format salah!",
+                "Hanya file PDF yang diperbolehkan.",
+                "error"
+              );
+              return;
+            }
+            // Menampilkan SweetAlert progress bar
+            Swal.fire({
+              title: "Mengupload...",
+              text: "Proses upload sedang berlangsung",
+              allowOutsideClick: false,
+              showCancelButton: false,
+              didOpen: () => {
+                Swal.showLoading();
+              },
+            });
+
+            // Mengubah file menjadi base64
+            const reader = new FileReader();
+            reader.onloadend = function () {
+              const base64File = reader.result.split(",")[1]; // Mengambil bagian base64 dari hasil reader
+
+              const formData = new FormData();
+              formData.append("file", base64File); // Mengirimkan base64
+              formData.append("nama", nama); // Mengirimkan nama file
+
+              const uploadUrl =
+                "https://script.google.com/macros/s/AKfycbx-zSTbP61u5RXh9rsH1V21Ub1FZFtfPt0epKlEhn4jjLEUHJR9qbO_9z3HPPMJENpNRg/exec"; // Ganti dengan URL Web App yang benar
+
+              fetch(uploadUrl, {
+                method: "POST",
+                body: formData,
+              })
+                .then((res) => res.json())
+                .then((data) => {
+                  if (data.status === "success") {
+                    const fileUrl = data.fileUrl;
+                    db.ref(`pegawai/${id}`)
+                      .update({ buktiPotong: fileUrl })
+                      .then(() => {
+                        Swal.fire(
+                          "Sukses",
+                          "File berhasil diupload dan disimpan.",
+                          "success"
+                        ).then(() => {
+                          // Ganti tombol upload dengan badge hijau "File Terupload"
+                          inputGroup.innerHTML = `
+                    <span class="badge bg-success">Bukti Potong Terupload</span>
+                  `;
+                        });
+                      });
+                  } else {
+                    throw new Error(data.message || "Upload gagal");
+                  }
+                })
+                .catch((err) => {
+                  Swal.fire("Gagal", err.message, "error");
+                });
+            };
+
+            // Membaca file sebagai base64
+            reader.readAsDataURL(file);
+          });
+        });
+      });
+    </script>
+  </body>
+</html>
